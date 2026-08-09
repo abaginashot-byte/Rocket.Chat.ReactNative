@@ -9,11 +9,12 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout Rocket.Chat Mobile 4.67.1
-        uses: actions/checkout@v4
-        with:
-          ref: 4.67.1
-          fetch-depth: 0
+   - name: Checkout Rocket.Chat Mobile 4.67.1
+  uses: actions/checkout@v4
+  with:
+    repository: RocketChat/Rocket.Chat.ReactNative
+    ref: 4.67.1
+    fetch-depth: 0
 
       - name: Setup Node
         uses: ./.github/actions/setup-node
