@@ -1,4 +1,4 @@
-name: Build Rocket.Chat APK
+name: Build Rocket.Chat 4.67.1 APK
 
 on:
   workflow_dispatch:
@@ -9,8 +9,11 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
+      - name: Checkout Rocket.Chat Mobile 4.67.1
         uses: actions/checkout@v4
+        with:
+          ref: 4.67.1
+          fetch-depth: 0
 
       - name: Setup Node
         uses: ./.github/actions/setup-node
@@ -34,16 +37,16 @@ jobs:
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res
 
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: android
         timeout-minutes: 45
         run: |
-          echo "Starting Gradle build..."
+          echo "Building Rocket.Chat Mobile 4.67.1..."
           ./gradlew assembleDebug --no-daemon --stacktrace --info
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rocket-chat-apk
+          name: rocket-chat-4.67.1-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
