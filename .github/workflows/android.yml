@@ -1,4 +1,4 @@
-name: Build Rocket.Chat Debug APK
+name: Build Rocket.Chat APK
 
 on:
   workflow_dispatch:
@@ -24,6 +24,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Create React Native bundle
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+
       - name: Build Debug APK
         working-directory: android
         timeout-minutes: 45
@@ -31,9 +41,9 @@ jobs:
           echo "Starting Gradle build..."
           ./gradlew assembleDebug --no-daemon --stacktrace --info
 
-      - name: Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rocket-chat-debug-apk
+          name: rocket-chat-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
