@@ -1,4 +1,4 @@
-name: Find Rocket.Chat version check
+name: Find Rocket.Chat supported versions logic
 
 on:
   workflow_dispatch:
@@ -16,62 +16,13 @@ jobs:
           ref: 4.67.1
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: ./.github/actions/setup-node
-
-      - name: Find supportedVersionsStatus logic
+      - name: Find supported versions state
         shell: bash
         run: |
           set -e
 
           echo "=========================================="
-          echo "Searching for supportedVersionsStatus..."
-          echo "=========================================="
-
-          FILES=$(grep -RIl \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            "supportedVersionsStatus" . || true)
-
-          if [ -z "$FILES" ]; then
-            echo "ERROR: supportedVersionsStatus was not found."
-            exit 1
-          fi
-
-          echo ""
-          echo "Found in:"
-          echo "$FILES"
-
-          while IFS= read -r file; do
-            echo ""
-            echo "=========================================="
-            echo "FILE: $file"
-            echo "=========================================="
-
-            grep -n -C 30 \
-              "supportedVersionsStatus" "$file" || true
-
-          done <<< "$FILES"
-
-      - name: Find expired status logic
-        shell: bash
-        run: |
-          echo ""
-          echo "=========================================="
-          echo "Searching for 'expired' logic..."
-          echo "=========================================="
-
-          grep -Rni -C 15 \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            "expired" . || true
-
-      - name: Find supported versions API logic
-        shell: bash
-        run: |
-          echo ""
-          echo "=========================================="
-          echo "Searching for supportedVersions..."
+          echo "1. supportedVersions references"
           echo "=========================================="
 
           grep -Rni -C 15 \
@@ -79,13 +30,57 @@ jobs:
             --exclude-dir=.git \
             "supportedVersions" . || true
 
-      - name: Stop after diagnostics
+      - name: Find expired assignments
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "=========================================="
+          echo "2. expired assignments"
+          echo "=========================================="
+
+          grep -Rni -C 20 \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            -E "['\"]expired['\"]|expired[[:space:]]*:" . || true
+
+      - name: Find supported versions reducer
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "=========================================="
+          echo "3. Redux reducer / slice"
+          echo "=========================================="
+
+          grep -Rni -C 20 \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            -E "createSlice|createReducer|supportedVersions" \
+            app/reducers app/store app/state app 2>/dev/null || true
+
+      - name: Find supported versions API calls
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "=========================================="
+          echo "4. API / REST / SDK calls"
+          echo "=========================================="
+
+          grep -Rni -C 15 \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            -E "supportedVersions|minimumClientVersions|versionStatus|versions" \
+            app/lib app/sagas app/actions 2>/dev/null || true
+
+      - name: Finish diagnostics
         run: |
           echo ""
           echo "=========================================="
-          echo "DIAGNOSTIC COMPLETE"
+          echo "DIAGNOSTICS FINISHED"
           echo "=========================================="
-          echo "No APK will be built in this run."
-          echo "The output above shows where the compatibility"
-          echo "decision is made."
-          exit 1
+          echo "No APK was built."
