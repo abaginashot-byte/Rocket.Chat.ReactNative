@@ -1,4 +1,4 @@
-name: Build Rocket.Chat 4.67.1 APK
+name: Build Rocket.Chat 4.67.1 APK for 7.13
 
 on:
   workflow_dispatch:
@@ -28,9 +28,77 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Locate version check
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching Rocket.Chat Mobile source..."
+
+          echo "=== unsupported version references ==="
+          grep -Rni \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            "version_unsupported" . || true
+
+          echo "=== minimumSupportedVersion references ==="
+          grep -Rni \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            "minimumSupportedVersion" . || true
+
+          echo "=== supportedVersions references ==="
+          grep -Rni \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            "supportedVersions" . || true
+
+      - name: Patch compatibility check for Rocket.Chat 7.13
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching for compatibility check..."
+
+          MATCHES=$(grep -RIl \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            -E "minimumSupportedVersion|supportedVersions|version_unsupported" . || true)
+
+          if [ -z "$MATCHES" ]; then
+            echo "ERROR: Compatibility check was not found."
+            echo "We will NOT make a blind modification."
+            exit 1
+          fi
+
+          echo "Candidate files:"
+          echo "$MATCHES"
+
+          # Create a diagnostic copy before modification.
+          mkdir -p /tmp/rocketchat-version-check
+          cp $MATCHES /tmp/rocketchat-version-check/ 2>/dev/null || true
+
+          echo ""
+          echo "=== Matching source lines ==="
+
+          while IFS= read -r file; do
+            echo "----- $file -----"
+            grep -n -C 5 \
+              -E "minimumSupportedVersion|supportedVersions|version_unsupported" \
+              "$file" || true
+          done <<< "$MATCHES"
+
+          echo ""
+          echo "The source was located successfully."
+          echo "Stopping here intentionally."
+          echo "The next run will contain the exact patch after we identify the file."
+
+          exit 1
+
       - name: Create React Native bundle
         run: |
           mkdir -p android/app/src/main/assets
+
           npx react-native bundle \
             --platform android \
             --dev false \
@@ -42,28 +110,19 @@ jobs:
         working-directory: android
         timeout-minutes: 60
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace --info
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Find APK
+        shell: bash
         run: |
-          echo "Searching for APK files..."
-          find android -type f -name "*.apk" -print
-
-      - name: Prepare APK
-        run: |
-          APK=$(find android -type f -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not found"
-            exit 1
-          fi
-
-          echo "Found APK: $APK"
-          cp "$APK" rocket-chat-4.67.1.apk
+          echo "=== APK files ==="
+          find android/app/build/outputs -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rocket-chat-4.67.1-apk
-          path: rocket-chat-4.67.1.apk
+          name: rocket-chat-4.67.1-android
+          path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
