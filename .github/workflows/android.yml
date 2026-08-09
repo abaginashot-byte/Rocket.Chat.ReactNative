@@ -1,12 +1,12 @@
-name: Find Rocket.Chat supported versions logic
+name: Build Rocket.Chat 4.67.1 APK
 
 on:
   workflow_dispatch:
 
 jobs:
-  inspect:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     steps:
       - name: Checkout Rocket.Chat Mobile 4.67.1
@@ -16,71 +16,99 @@ jobs:
           ref: 4.67.1
           fetch-depth: 0
 
-      - name: Find supported versions state
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Disable supported version blocking
         shell: bash
         run: |
           set -e
 
+          FILE="app/lib/methods/checkSupportedVersions.ts"
+
           echo "=========================================="
-          echo "1. supportedVersions references"
+          echo "Patching supported version check"
           echo "=========================================="
 
-          grep -Rni -C 15 \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            "supportedVersions" . || true
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Find expired assignments
-        shell: bash
+          file = Path("app/lib/methods/checkSupportedVersions.ts")
+          text = file.read_text()
+
+          start = text.find("const getStatus =")
+          if start == -1:
+              print("ERROR: getStatus function was not found.")
+              raise SystemExit(1)
+
+          end = text.find("\n};", start)
+          if end == -1:
+              print("ERROR: End of getStatus function was not found.")
+              raise SystemExit(1)
+
+          end += 3
+
+          old = text[start:end]
+
+          new = """const getStatus = ({ expiration, message }: { expiration?: string; message?: TSVMessage }): TSVStatus => {
+           if (message) {
+            return 'warn';
+           }
+           return 'supported';
+          };"""
+
+          text = text[:start] + new + text[end:]
+          file.write_text(text)
+
+          print("Patch applied successfully.")
+          print()
+          print(new)
+          PY
+
+          echo ""
+          echo "=========================================="
+          echo "Checking patched function"
+          echo "=========================================="
+
+          grep -n -A8 -B2 "const getStatus" "$FILE"
+
+      - name: Create React Native bundle
         run: |
           set -e
 
-          echo ""
-          echo "=========================================="
-          echo "2. expired assignments"
-          echo "=========================================="
+          mkdir -p android/app/src/main/assets
 
-          grep -Rni -C 20 \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            -E "['\"]expired['\"]|expired[[:space:]]*:" . || true
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
 
-      - name: Find supported versions reducer
-        shell: bash
+      - name: Build APK
+        working-directory: android
+        timeout-minutes: 45
         run: |
           set -e
 
-          echo ""
           echo "=========================================="
-          echo "3. Redux reducer / slice"
-          echo "=========================================="
-
-          grep -Rni -C 20 \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            -E "createSlice|createReducer|supportedVersions" \
-            app/reducers app/store app/state app 2>/dev/null || true
-
-      - name: Find supported versions API calls
-        shell: bash
-        run: |
-          set -e
-
-          echo ""
-          echo "=========================================="
-          echo "4. API / REST / SDK calls"
+          echo "Building Rocket.Chat Mobile 4.67.1"
           echo "=========================================="
 
-          grep -Rni -C 15 \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            -E "supportedVersions|minimumClientVersions|versionStatus|versions" \
-            app/lib app/sagas app/actions 2>/dev/null || true
+          ./gradlew assembleDebug --no-daemon --stacktrace --info
 
-      - name: Finish diagnostics
-        run: |
-          echo ""
-          echo "=========================================="
-          echo "DIAGNOSTICS FINISHED"
-          echo "=========================================="
-          echo "No APK was built."
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-chat-4.67.1-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
