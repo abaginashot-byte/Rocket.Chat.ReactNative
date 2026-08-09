@@ -1,12 +1,12 @@
-name: Build Rocket.Chat 4.67.1 APK for 7.13
+name: Find Rocket.Chat version check
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 10
 
     steps:
       - name: Checkout Rocket.Chat Mobile 4.67.1
@@ -19,110 +19,73 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Locate version check
+      - name: Find supportedVersionsStatus logic
         shell: bash
         run: |
           set -e
 
-          echo "Searching Rocket.Chat Mobile source..."
+          echo "=========================================="
+          echo "Searching for supportedVersionsStatus..."
+          echo "=========================================="
 
-          echo "=== unsupported version references ==="
-          grep -Rni \
+          FILES=$(grep -RIl \
             --exclude-dir=node_modules \
             --exclude-dir=.git \
-            "version_unsupported" . || true
+            "supportedVersionsStatus" . || true)
 
-          echo "=== minimumSupportedVersion references ==="
-          grep -Rni \
+          if [ -z "$FILES" ]; then
+            echo "ERROR: supportedVersionsStatus was not found."
+            exit 1
+          fi
+
+          echo ""
+          echo "Found in:"
+          echo "$FILES"
+
+          while IFS= read -r file; do
+            echo ""
+            echo "=========================================="
+            echo "FILE: $file"
+            echo "=========================================="
+
+            grep -n -C 30 \
+              "supportedVersionsStatus" "$file" || true
+
+          done <<< "$FILES"
+
+      - name: Find expired status logic
+        shell: bash
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Searching for 'expired' logic..."
+          echo "=========================================="
+
+          grep -Rni -C 15 \
             --exclude-dir=node_modules \
             --exclude-dir=.git \
-            "minimumSupportedVersion" . || true
+            "expired" . || true
 
-          echo "=== supportedVersions references ==="
-          grep -Rni \
+      - name: Find supported versions API logic
+        shell: bash
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Searching for supportedVersions..."
+          echo "=========================================="
+
+          grep -Rni -C 15 \
             --exclude-dir=node_modules \
             --exclude-dir=.git \
             "supportedVersions" . || true
 
-      - name: Patch compatibility check for Rocket.Chat 7.13
-        shell: bash
+      - name: Stop after diagnostics
         run: |
-          set -e
-
-          echo "Searching for compatibility check..."
-
-          MATCHES=$(grep -RIl \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            -E "minimumSupportedVersion|supportedVersions|version_unsupported" . || true)
-
-          if [ -z "$MATCHES" ]; then
-            echo "ERROR: Compatibility check was not found."
-            echo "We will NOT make a blind modification."
-            exit 1
-          fi
-
-          echo "Candidate files:"
-          echo "$MATCHES"
-
-          # Create a diagnostic copy before modification.
-          mkdir -p /tmp/rocketchat-version-check
-          cp $MATCHES /tmp/rocketchat-version-check/ 2>/dev/null || true
-
           echo ""
-          echo "=== Matching source lines ==="
-
-          while IFS= read -r file; do
-            echo "----- $file -----"
-            grep -n -C 5 \
-              -E "minimumSupportedVersion|supportedVersions|version_unsupported" \
-              "$file" || true
-          done <<< "$MATCHES"
-
-          echo ""
-          echo "The source was located successfully."
-          echo "Stopping here intentionally."
-          echo "The next run will contain the exact patch after we identify the file."
-
+          echo "=========================================="
+          echo "DIAGNOSTIC COMPLETE"
+          echo "=========================================="
+          echo "No APK will be built in this run."
+          echo "The output above shows where the compatibility"
+          echo "decision is made."
           exit 1
-
-      - name: Create React Native bundle
-        run: |
-          mkdir -p android/app/src/main/assets
-
-          npx react-native bundle \
-            --platform android \
-            --dev false \
-            --entry-file index.js \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res
-
-      - name: Build Debug APK
-        working-directory: android
-        timeout-minutes: 60
-        run: |
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      - name: Find APK
-        shell: bash
-        run: |
-          echo "=== APK files ==="
-          find android/app/build/outputs -type f -name "*.apk" -print
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rocket-chat-4.67.1-android
-          path: android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
