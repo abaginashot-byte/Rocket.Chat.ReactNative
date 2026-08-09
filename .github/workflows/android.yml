@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout Rocket.Chat Mobile 4.67.1
@@ -38,16 +38,32 @@ jobs:
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res
 
-      - name: Build APK
+      - name: Build Debug APK
         working-directory: android
-        timeout-minutes: 45
+        timeout-minutes: 60
         run: |
-          echo "Building Rocket.Chat Mobile 4.67.1..."
           ./gradlew assembleDebug --no-daemon --stacktrace --info
+
+      - name: Find APK
+        run: |
+          echo "Searching for APK files..."
+          find android -type f -name "*.apk" -print
+
+      - name: Prepare APK
+        run: |
+          APK=$(find android -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not found"
+            exit 1
+          fi
+
+          echo "Found APK: $APK"
+          cp "$APK" rocket-chat-4.67.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: rocket-chat-4.67.1-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: rocket-chat-4.67.1.apk
           if-no-files-found: error
