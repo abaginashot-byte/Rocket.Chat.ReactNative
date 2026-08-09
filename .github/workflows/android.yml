@@ -106,9 +106,31 @@ jobs:
 
           ./gradlew assembleDebug --no-daemon --stacktrace --info
 
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "Searching for APK files"
+          echo "=========================================="
+
+          echo ""
+          echo "All APK files:"
+          find android -type f -name "*.apk" -print || true
+
+          echo ""
+          echo "Build output:"
+          find android/app/build -maxdepth 8 -type f 2>/dev/null | sort | head -200 || true
+
+          echo ""
+          echo "=========================================="
+          echo "APK search finished"
+          echo "=========================================="
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: rocket-chat-4.67.1-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/**/*.apk
           if-no-files-found: error
